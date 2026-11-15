@@ -153,13 +153,14 @@ static inline std::string getRomPath(SdService& sdService, CardputerView& displa
             previousPath = currentPath;
 
             if (elementNames.empty()) {
-                display.subMessage("No elements found", 2000);
-                auto parent = sdService.getParentDirectory(currentPath);
-                if (parent.empty() || parent == currentPath) {
-                    sdService.close();
-                    return "";
+                display.subMessage("No elements found", 1000);
+                if (currentPath == "/") {
+                    // Gia' nella root, riprova a leggere
+                    delay(500);
+                    previousPath = "";
+                    continue;
                 }
-                currentPath = parent;
+                currentPath = "/";
                 continue;
             }
         }

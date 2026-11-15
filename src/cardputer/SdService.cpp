@@ -5,16 +5,22 @@
 SdService::SdService() {}
 
 bool SdService::begin() {
-    sdCardSPI.begin(
-        SD_SCK,
-        SD_MISO,
-        SD_MOSI,
-        SD_CS
-    );
-    delay(10);
+    if (sdCardMounted) {
+        return true;
+    }
 
-    // find best speed
-    const uint32_t speeds[] = { 40000000u, 20000000u };
+    if (!spiInitialized) {
+        // Cardputer ADV: deseleziona chip LoRa secondario su GPIO 5
+        pinMode(5, OUTPUT);
+        digitalWrite(5, HIGH);
+        pinMode(SD_CS, OUTPUT);
+        digitalWrite(SD_CS, HIGH);
+        sdCardSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+        spiInitialized = true;
+        delay(20);
+    }
+
+    const uint32_t speeds[] = { 25000000u, 20000000u };
     for (uint32_t hz : speeds) {
         if (SD.begin(SD_CS, sdCardSPI, hz, "/sd")) {
             sdCardMounted = true;
@@ -22,8 +28,9 @@ bool SdService::begin() {
         }
     }
 
+    SD.end();
     sdCardMounted = false;
-    return sdCardMounted;
+    return false;
 }
 
 void SdService::close() {
@@ -42,11 +49,14 @@ bool SdService::isFile(const std::string& filePath) {
 
 bool SdService::isDirectory(const std::string& path) {
     File f = SD.open(path.c_str());
-    if (f && f.isDirectory()) {
-        f.close();
-        return true;
+    if (!f && !path.empty() && path.back() != '/') {
+        f = SD.open((path + "/").c_str());
     }
-    return false;
+    bool isDir = (f && f.isDirectory());
+    if (f) {
+        f.close();
+    }
+    return isDir;
 }
 
 bool SdService::getSdState() {

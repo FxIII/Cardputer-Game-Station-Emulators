@@ -33,7 +33,7 @@ bool copyFileToPartition(
     void* progressCtx
 ) {
   if (outSize) *outSize = 0;
-  if (!srcPath || !part) return false;
+  if (!srcPath || !part || srcPath[0] == '\0') return false;
 
   FILE* f = fopen(srcPath, "rb");
   if (!f) return false;

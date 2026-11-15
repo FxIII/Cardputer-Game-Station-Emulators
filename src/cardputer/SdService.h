@@ -17,6 +17,7 @@ static constexpr int SD_CS   = 12;
 class SdService {
 private:
     SPIClass sdCardSPI;
+    bool spiInitialized = false;
     bool sdCardMounted = false;
     std::unordered_map<std::string, std::vector<std::string>> cachedDirectoryElements;
 public:

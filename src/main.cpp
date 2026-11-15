@@ -45,10 +45,20 @@ void setup() {
   auto cfg = M5.config();
   cfg.output_power = true;
   M5Cardputer.begin(cfg);
+
+  // Cardputer ADV: disabilita il chip secondario sul bus SPI (LoRa/Radio CS = GPIO 5)
+  // per liberare le linee MISO/MOSI a favore della MicroSD
+  pinMode(5, OUTPUT);
+  digitalWrite(5, HIGH);
+
   CardputerInput input;
   SdService sd;
   CardputerView display;
   display.initialize();
+
+  // Welcome all'avvio: accende il display e dà tempo alla microSD di stabilizzarsi
+  display.welcome();
+  input.waitPress(2000);
 
   // SD
   while (!sd.begin()) {
@@ -61,23 +71,10 @@ void setup() {
   auto romFolder = getRomFolderFromNvs(display, input, sd);
   romFolder = romFolder.empty() ? "/" : romFolder;
 
-  if (isQuittingGame()) {
+  // Selezione della ROM dalla scheda SD
+  while (romPath.empty()) {
     romPath = getRomPath(sd, display, input, romFolder, true);
-  } else {
-    // Welcome
-    display.welcome();
-    input.waitPress(4000);
-
-    // Try to get last game from NVS or select a new one
-    romPath = getLastGameFromNvs(display, input, sd);
-    if (romPath.empty()) {
-      auto skipWelcome = romFolder == "/" ? false : true;
-      romPath = getRomPath(sd, display, input, romFolder, skipWelcome);
-    } else {
-      romPath = "/sd" + romPath; // ensure sd prefix
-    }
   }
-  EMU_LOG("Selected ROM: %s\n", romPath.c_str());
 
   display.topBar("COPYING ROM TO FLASH", false, false);
   display.subMessage("Loading...", 0);
@@ -98,7 +95,7 @@ void setup() {
     // Rom limit is reached for the current SPIFFS layout
     while (1) {
         display.topBar("ROM IS TOO HEAVY", false, false);
-        display.subMessage("If you're using launcher",2000);
+        display.subMessage("If you're using launcher", 2000);
         display.subMessage("Increase SPIFFS layout", 2000);
         delay(1500);
     }
