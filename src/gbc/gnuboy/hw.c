@@ -5,6 +5,7 @@
 #include "cpu.h"
 #include "hw.h"
 #include "lcd.h"
+#include "serial.h"
 
 gb_cart_t cart;
 gb_t GB;
@@ -545,14 +546,10 @@ void gb_hw_write(unsigned a, byte b)
 				pad_refresh();
 				break;
 			case RI_SB:
-				REG(r) = b;
+				serial_write_sb(b);
 				break;
 			case RI_SC:
-				if ((b & 0x81) == 0x81)
-					hw.serial = 1952; // 8 * 122us;
-				else
-					hw.serial = 0;
-				REG(r) = b; /* & 0x7f; */
+				serial_write_sc(b);
 				break;
 			case RI_DIV:
 				REG(r) = 0;

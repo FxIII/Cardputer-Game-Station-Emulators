@@ -3,6 +3,7 @@
 #include "lcd.h"
 #include "cpu.h"
 #include "sound.h"
+#include "serial.h"
 
 // For cycle accurate emulation this needs to be 1
 // Anything above 10 have diminishing returns
@@ -199,22 +200,7 @@ static inline void timer_advance(int cycles)
 	}
 }
 
-/* cnt - time to emulate, expressed in real clock cycles */
-static inline void serial_advance(int cycles)
-{
-	if (GB.serial > 0)
-	{
-		GB.serial -= cycles << 1;
-		if (GB.serial <= 0)
-		{
-			R_SB = 0xFF;
-			R_SC &= 0x7f;
-			GB.serial = 0;
-			gb_hw_interrupt(IF_SERIAL, 1);
-			gb_hw_interrupt(IF_SERIAL, 0);
-		}
-	}
-}
+
 
 static inline int exec_cb(void)
 {
