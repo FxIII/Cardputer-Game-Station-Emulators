@@ -5,6 +5,7 @@
 #include "cpu.h"
 #include "sound.h"
 #include "lcd.h"
+#include "serial.h"
 #include <stdio.h>
 
 #define hw GB
@@ -29,6 +30,7 @@ int gnuboy_init(int samplerate, gb_audio_fmt_t audio_fmt, gb_video_fmt_t video_f
 	};
 	if (!gb_hw_init())
 		return -1;
+	serial_init();
 	return 0;
 }
 
@@ -44,6 +46,7 @@ void gnuboy_reset(bool hard)
 	gb_lcd_reset(hard);
 	gb_cpu_reset(hard);
 	gb_sound_reset(hard);
+	serial_reset();
 }
 
 

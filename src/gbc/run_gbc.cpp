@@ -1,6 +1,8 @@
 #include <Arduino.h>
 extern "C" {
   #include "gnuboy/gnuboy.h"
+  #include "gnuboy/serial.h"
+  #include "gnuboy/driver_espnow.h"
 }
 
 #include "gbc_display.h"
@@ -9,6 +11,8 @@ extern "C" {
 #include "gbc_save.h"
 #include "share/utils.h"
 #include "share/emu_log_cpp.h"
+#include "share/espnow_transport.h"
+#include "cardputer/gb_link_ui.h"
 
 static uint16_t* s_gbFramebuf = nullptr;
 static int16_t* s_audioBuf = nullptr;
@@ -68,6 +72,12 @@ bool isGbcGame(const char* filename) {
 }
 
 void run_gbc(const uint8_t* romData, size_t romLen, const char* romPathOrName) {
+    // Menu Link Cable prima di avviare il gioco
+    CardputerInput linkInput;
+    CardputerView linkDisplay;
+    linkDisplay.initialize();
+    GbLinkConfig linkCfg = gb_link_show_menu(linkDisplay, linkInput);
+
     // Audio Video
     gbc_display_init();
     gbc_display_start();
@@ -98,6 +108,18 @@ void run_gbc(const uint8_t* romData, size_t romLen, const char* romPathOrName) {
     gnuboy_set_pad(0);
     gbc_save_init(romPathOrName);
     gbc_save_load();
+
+    // Link Cable Serial Driver Setup (DOPO gnuboy_init e gnuboy_reset)
+    if (linkCfg.enabled) {
+        EMU_LOG("[GBC] Link Cable ENABLED -> Peer: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                linkCfg.peer_mac[0], linkCfg.peer_mac[1], linkCfg.peer_mac[2],
+                linkCfg.peer_mac[3], linkCfg.peer_mac[4], linkCfg.peer_mac[5]);
+        driver_espnow_set_peer(linkCfg.peer_mac);
+        serial_set_driver(&driver_espnow);
+    } else {
+        EMU_LOG("[GBC] Link Cable DISABLED (Single Player)\n");
+        serial_set_driver(&driver_null);
+    }
     
     // FPS counter
     uint32_t frameCount = 0;
