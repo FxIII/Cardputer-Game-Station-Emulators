@@ -46,10 +46,20 @@ void setup() {
   auto cfg = M5.config();
   cfg.output_power = true;
   M5Cardputer.begin(cfg);
+
+  // Cardputer ADV: disabilita il chip secondario sul bus SPI (LoRa/Radio CS = GPIO 5)
+  // per liberare le linee MISO/MOSI a favore della MicroSD
+  pinMode(5, OUTPUT);
+  digitalWrite(5, HIGH);
+
   CardputerInput input;
   SdService sd;
   CardputerView display;
   display.initialize();
+
+  // Welcome all'avvio: accende il display e dà tempo alla microSD di stabilizzarsi
+  display.welcome();
+  input.waitPress(2000);
 
   // SD
   while (!sd.begin()) {
@@ -62,23 +72,10 @@ void setup() {
   auto romFolder = getRomFolderFromNvs(display, input, sd);
   romFolder = romFolder.empty() ? "/" : romFolder;
 
-  if (isQuittingGame()) {
+  // Selezione della ROM dalla scheda SD
+  while (romPath.empty()) {
     romPath = getRomPath(sd, display, input, romFolder, true);
-  } else {
-    // Welcome
-    display.welcome();
-    input.waitPress(4000);
-
-    // Try to get last game from NVS or select a new one
-    romPath = getLastGameFromNvs(display, input, sd);
-    if (romPath.empty()) {
-      auto skipWelcome = romFolder == "/" ? false : true;
-      romPath = getRomPath(sd, display, input, romFolder, skipWelcome);
-    } else {
-      romPath = "/sd" + romPath; // ensure sd prefix
-    }
   }
-  EMU_LOG("Selected ROM: %s\n", romPath.c_str());
 
   display.topBar("COPYING ROM TO FLASH", false, false);
   display.subMessage("Loading...", 0);
@@ -96,30 +93,9 @@ void setup() {
   // Copy the ROM file to the partition
   size_t romSize = 0;
   if (!copyFileToPartition(romPath.c_str(), romPart, &romSize, CardputerView::copyProgress, &display)) {
-    // User is using the launcher
-    if (isLauncherLayout()) {
-      // Ask to flash the launcher Game Station partition to unlock full size
-      ConfirmationSelector confirm(display, input);
-      bool confirmed = confirm.select("ROM IS TOO HEAVY", "Change to 4MB layout?");
-      
-      if (confirmed) {
-        display.topBar("FLASHING PARTITIONS", false, false);
-        display.subMessage("Allow up to 4MB roms", 3000);
-        auto ok = flashGameStationPartition();
-        if (ok) {
-          display.subMessage("Success, rebooting...", 3000);
-          saveLastGameToNvs(romPath);
-          esp_restart();
-        } else {
-          display.subMessage("Partition flashing failed", 3000);
-        }
-      }
-    }
-    // Rom limit is reached (either launcher default 1MB/4MB or normal 5.5MB)
     while (1) {
-        display.topBar("ROM IS TOO HEAVY", false, false);
+        display.topBar("COPY ERROR", false, false);
         display.subMessage("Copy ROM to flash failed", 1500);
-        display.subMessage("ROM limit is reached", 1500);
         delay(1500);
     }
   }
