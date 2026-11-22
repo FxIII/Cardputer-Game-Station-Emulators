@@ -11,7 +11,6 @@ extern "C" {
 #include "gbc_save.h"
 #include "share/utils.h"
 #include "share/emu_log_cpp.h"
-#include "share/espnow_transport.h"
 #include "cardputer/gb_link_ui.h"
 
 static uint16_t* s_gbFramebuf = nullptr;

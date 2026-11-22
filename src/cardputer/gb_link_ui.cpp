@@ -254,7 +254,7 @@ static GbLinkConfig run_find_partner(CardputerView& display, CardputerInput& inp
 
     VerticalSelector selector(display, input);
 
-    int selectedIdx = -1;
+    DiscoveredPeer chosen = {};
     for (;;) {
         char key = input.readChar();
         if (key == KEY_ESC_CUSTOM || key == KEY_ARROW_LEFT) {
@@ -279,7 +279,7 @@ static GbLinkConfig run_find_partner(CardputerView& display, CardputerInput& inp
 
             int choice = selector.select("SELECT PARTNER", options, false, false);
             if (choice >= 0 && choice < (int)peersCopy.size()) {
-                selectedIdx = choice;
+                chosen = peersCopy[choice];
                 break;
             } else if (choice == -1) {
                 display.subMessage("Cancelled", 600);
@@ -288,8 +288,6 @@ static GbLinkConfig run_find_partner(CardputerView& display, CardputerInput& inp
         }
         delay(50);
     }
-
-    DiscoveredPeer chosen = s_discovered_peers[selectedIdx];
 
     // Send connection packet
     GbPairPacket connPkt = {};
