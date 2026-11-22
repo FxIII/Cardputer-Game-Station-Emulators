@@ -133,7 +133,7 @@ extern "C" void gbc_sound_init(int sample_rate)
     cfg.stereo            = false;
     cfg.dma_buf_len       = 512;
     cfg.dma_buf_count     = 8;
-    cfg.task_priority     = 4;
+    cfg.task_priority     = 20; /* Priority 20 > 19 (emulator) to prevent audio starvation during link waits */
     cfg.task_pinned_core  = 1;
     M5Cardputer.Speaker.config(cfg);
 

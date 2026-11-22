@@ -18,8 +18,8 @@
 
 #define hw GB
 
-#define MASTER_BLOCKING_TIMEOUT_US  100000  /* 100 ms timeout for Master waiting for Slave reply (allineato a driver_pipe) */
-#define SLAVE_HOLD_TIMEOUT_US        60000  /* 60 ms hold for Slave to arm R_SC (allineato a driver_pipe) */
+#define MASTER_BLOCKING_TIMEOUT_US   20000  /* 20 ms safety timeout for Master waiting for Slave reply */
+#define SLAVE_HOLD_TIMEOUT_US         4000  /* 4 ms hold for Slave: grace window to arm R_SC, then responds 0xFF on-the-fly */
 
 static uint8_t s_peer_mac[6] = {0};
 static bool s_has_peer = false;
@@ -31,6 +31,28 @@ static volatile uint8_t s_pending_type = 0;   /* 'M' or 'S' */
 static volatile uint8_t s_pending_seq = 0;
 static volatile uint8_t s_pending_val = 0;
 static volatile uint64_t s_hold_start_us = 0;
+
+/* Telemetry / Timing tracking */
+static volatile uint64_t s_last_tx_us = 0;
+static volatile uint64_t s_last_rx_us = 0;
+
+typedef struct {
+    uint8_t seq;
+    uint8_t val;
+    char type;
+    uint32_t rtt_us;          /* Total round-trip time from Master TX to reply RX */
+    uint32_t handle_delay_us; /* Time from packet arrival to reading/interrupt dispatch */
+    bool is_timeout;
+} telemetry_entry_t;
+
+#define TELEMETRY_HISTORY_SIZE 16
+static telemetry_entry_t s_history[TELEMETRY_HISTORY_SIZE];
+static uint8_t s_hist_idx = 0;
+static uint32_t s_stat_tx_master = 0;
+static uint32_t s_stat_rx_slave_reply = 0;
+static uint32_t s_stat_master_timeouts = 0;
+static uint32_t s_stat_rx_master = 0;
+static uint32_t s_stat_tx_slave_reply = 0;
 
 /* Master & Slave sequence numbers */
 static uint8_t s_master_tx_seq = 0;
@@ -58,18 +80,21 @@ static void espnow_rx_callback(const uint8_t *mac_addr, const uint8_t *data, int
         if (type == 'S') {
             if (seq == s_expected_reply_seq) {
                 /* Exact match */
+                s_last_rx_us = (uint64_t)esp_timer_get_time();
                 s_pending_type = type;
                 s_pending_seq = seq;
                 s_pending_val = val;
                 s_has_pending = true;
                 s_is_master_mode = false;
                 s_waiting_for_reply = false;
+                s_stat_rx_slave_reply++;
                 return;
             } else if ((uint8_t)(s_expected_reply_seq - seq) < 128) {
                 /* Stale reply, ignore */
                 return;
             } else {
                 /* Resync */
+                s_last_rx_us = (uint64_t)esp_timer_get_time();
                 s_expected_reply_seq = seq;
                 s_pending_type = type;
                 s_pending_seq = seq;
@@ -77,10 +102,12 @@ static void espnow_rx_callback(const uint8_t *mac_addr, const uint8_t *data, int
                 s_has_pending = true;
                 s_is_master_mode = false;
                 s_waiting_for_reply = false;
+                s_stat_rx_slave_reply++;
                 return;
             }
         } else if (type == 'M') {
             /* Collision */
+            s_last_rx_us = (uint64_t)esp_timer_get_time();
             s_pending_type = type;
             s_pending_seq = seq;
             s_pending_val = val;
@@ -93,12 +120,14 @@ static void espnow_rx_callback(const uint8_t *mac_addr, const uint8_t *data, int
 
     /* 2. Slave mode / Receiver */
     if (type == 'M') {
+        s_last_rx_us = (uint64_t)esp_timer_get_time();
         s_slave_last_rx_seq = seq;
         s_pending_type = type;
         s_pending_seq = seq;
         s_pending_val = val;
-        s_hold_start_us = (uint64_t)esp_timer_get_time();
+        s_hold_start_us = s_last_rx_us;
         s_has_pending = true;
+        s_stat_rx_master++;
     }
 }
 
@@ -149,6 +178,8 @@ static void espnow_init(void)
     s_expected_reply_seq = 0;
     s_slave_last_rx_seq = 0;
     s_hold_start_us = 0;
+    s_hist_idx = 0;
+    memset(s_history, 0, sizeof(s_history));
 
     esp_now_register_recv_cb(espnow_rx_callback);
 }
@@ -170,6 +201,8 @@ static void espnow_send(bool is_master, uint8_t byte)
         s_expected_reply_seq = s_master_tx_seq;
         s_is_master_mode = true;
         s_waiting_for_reply = true;
+        s_last_tx_us = (uint64_t)esp_timer_get_time();
+        s_stat_tx_master++;
 
         pkt[0] = 'M';
         pkt[1] = s_master_tx_seq;
@@ -177,6 +210,7 @@ static void espnow_send(bool is_master, uint8_t byte)
     } else {
         s_is_master_mode = false;
         s_waiting_for_reply = false;
+        s_stat_tx_slave_reply++;
 
         pkt[0] = 'S';
         pkt[1] = s_slave_last_rx_seq;
@@ -194,9 +228,21 @@ static bool espnow_received(bool blocking)
         while (!s_has_pending) {
             uint64_t now = (uint64_t)esp_timer_get_time();
             if (now - start >= MASTER_BLOCKING_TIMEOUT_US) {
+                /* Master timed out */
+                s_stat_master_timeouts++;
+
+                telemetry_entry_t *entry = &s_history[s_hist_idx % TELEMETRY_HISTORY_SIZE];
+                entry->seq = s_expected_reply_seq;
+                entry->val = 0xFF;
+                entry->type = 'M';
+                entry->rtt_us = (uint32_t)(now - s_last_tx_us);
+                entry->handle_delay_us = 0;
+                entry->is_timeout = true;
+                s_hist_idx++;
                 break;
             }
             ets_delay_us(50);
+            taskYIELD(); /* Yield to FreeRTOS to prevent I2S audio buffer underflow */
         }
     }
 
@@ -235,10 +281,23 @@ static bool espnow_received(bool blocking)
 
 static uint8_t espnow_read(bool *out_is_master)
 {
+    uint64_t now_us = (uint64_t)esp_timer_get_time();
+
     if (out_is_master) {
         *out_is_master = (s_pending_type == 'M');
     }
     uint8_t val = s_pending_val;
+
+    /* Record sample into circular telemetry buffer */
+    telemetry_entry_t *entry = &s_history[s_hist_idx % TELEMETRY_HISTORY_SIZE];
+    entry->seq = s_pending_seq;
+    entry->val = val;
+    entry->type = s_pending_type;
+    entry->rtt_us = (s_pending_type == 'S' && s_last_tx_us > 0) ? (uint32_t)(s_last_rx_us - s_last_tx_us) : 0;
+    entry->handle_delay_us = (s_last_rx_us > 0) ? (uint32_t)(now_us - s_last_rx_us) : 0;
+    entry->is_timeout = false;
+    s_hist_idx++;
+
     s_has_pending = false;
     return val;
 }
@@ -250,6 +309,47 @@ static void espnow_cancel(uint8_t reason)
     s_is_master_mode = false;
     s_has_pending = false;
     s_hold_start_us = 0;
+}
+
+void driver_espnow_dump_stats(void)
+{
+    esp_rom_printf("\n================ [ESP-NOW LINK TELEMETRY] ================\n");
+    esp_rom_printf("Master TX: %u | Slave Reply RX: %u | Timeouts: %u\n",
+                   s_stat_tx_master, s_stat_rx_slave_reply, s_stat_master_timeouts);
+    esp_rom_printf("Slave RX:  %u | Slave Reply TX: %u\n",
+                   s_stat_rx_master, s_stat_tx_slave_reply);
+
+    /* Calculate average RTT of successful exchanges */
+    uint32_t sum_rtt = 0;
+    uint32_t count_rtt = 0;
+    uint8_t start = (s_hist_idx >= TELEMETRY_HISTORY_SIZE) ? (s_hist_idx - TELEMETRY_HISTORY_SIZE) : 0;
+    for (uint8_t i = start; i < s_hist_idx; i++) {
+        telemetry_entry_t *e = &s_history[i % TELEMETRY_HISTORY_SIZE];
+        if (!e->is_timeout && e->rtt_us > 0) {
+            sum_rtt += e->rtt_us;
+            count_rtt++;
+        }
+    }
+    if (count_rtt > 0) {
+        esp_rom_printf("Average RTT (last %u exchanges): %u us (%u ms)\n",
+                       count_rtt, sum_rtt / count_rtt, (sum_rtt / count_rtt) / 1000);
+    }
+
+    esp_rom_printf("--- Last %d exchanges ---\n", TELEMETRY_HISTORY_SIZE);
+    esp_rom_printf(" Type | Seq | Val  | RTT (us)  | Handle Delay (us) | Status\n");
+    esp_rom_printf("------+-----+------+-----------+-------------------+---------\n");
+
+    for (uint8_t i = start; i < s_hist_idx; i++) {
+        telemetry_entry_t *e = &s_history[i % TELEMETRY_HISTORY_SIZE];
+        if (e->is_timeout) {
+            esp_rom_printf("  [%c] | %02X  | --   | %7u us |       --          | TIMEOUT\n",
+                           e->type, e->seq, e->rtt_us);
+        } else {
+            esp_rom_printf("  [%c] | %02X  | 0x%02X | %7u us |     %6u us       | OK\n",
+                           e->type, e->seq, e->val, e->rtt_us, e->handle_delay_us);
+        }
+    }
+    esp_rom_printf("===========================================================\n\n");
 }
 
 serial_driver_t driver_espnow = {

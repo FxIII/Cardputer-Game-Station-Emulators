@@ -181,7 +181,7 @@ static GbLinkConfig run_share_my_id(CardputerView& display, CardputerInput& inpu
 
     display.topBar("SHARING ID", false, false);
 
-    // Pulisce l'area principale sotto la topbar
+    // Clear main area below topbar
     M5Cardputer.Display.fillRect(0, 25, M5Cardputer.Display.width(), M5Cardputer.Display.height() - 25, BACKGROUND_COLOR);
 
     M5Cardputer.Display.fillRoundRect(10, 35, M5Cardputer.Display.width() - 20, 92, DEFAULT_ROUND_RECT, TFT_BLACK);
@@ -291,7 +291,7 @@ static GbLinkConfig run_find_partner(CardputerView& display, CardputerInput& inp
 
     DiscoveredPeer chosen = s_discovered_peers[selectedIdx];
 
-    // Invia pacchetto di connessione
+    // Send connection packet
     GbPairPacket connPkt = {};
     connPkt.magic = GB_PAIR_MAGIC;
     connPkt.msg_type = GB_PAIR_MSG_CONNECT;
@@ -312,7 +312,7 @@ static GbLinkConfig run_find_partner(CardputerView& display, CardputerInput& inp
         delay(25);
     }
 
-    // Attendi ACK brevemente
+    // Wait for ACK briefly
     uint32_t waitStart = millis();
     while (!s_pairing_connected && (millis() - waitStart < 1500)) {
         delay(10);
@@ -361,7 +361,7 @@ GbLinkConfig gb_link_show_menu(CardputerView& display, CardputerInput& input) {
 
         int choice = selector.select("GB LINK CABLE", options, false, false);
 
-        // Single Player o ESC
+        // Single Player or ESC
         if (choice == -1 || choice == 0) {
             g_gb_link_config.enabled = false;
             return g_gb_link_config;
@@ -369,7 +369,7 @@ GbLinkConfig gb_link_show_menu(CardputerView& display, CardputerInput& input) {
 
         int idx = 1;
         if (hasSaved) {
-            // Cliccato "Last: [XX:XX:XX]"
+            // Clicked "Last: [XX:XX:XX]"
             if (choice == idx) {
                 memcpy(g_gb_link_config.peer_mac, savedMac, 6);
                 g_gb_link_config.enabled = true;
@@ -386,7 +386,7 @@ GbLinkConfig gb_link_show_menu(CardputerView& display, CardputerInput& input) {
             idx++;
         }
 
-        // Cliccato "Find Partner"
+        // Clicked "Find Partner"
         if (choice == idx) {
             g_gb_link_config = run_find_partner(display, input);
             if (g_gb_link_config.enabled) return g_gb_link_config;
@@ -395,7 +395,7 @@ GbLinkConfig gb_link_show_menu(CardputerView& display, CardputerInput& input) {
         }
         idx++;
 
-        // Cliccato "Share My ID"
+        // Clicked "Share My ID"
         if (choice == idx) {
             g_gb_link_config = run_share_my_id(display, input);
             if (g_gb_link_config.enabled) return g_gb_link_config;
@@ -404,7 +404,7 @@ GbLinkConfig gb_link_show_menu(CardputerView& display, CardputerInput& input) {
         }
         idx++;
 
-        // Cliccato "Clear Saved Partner"
+        // Clicked "Clear Saved Partner"
         if (hasSaved && choice == idx) {
             clear_saved_peer();
             hasSaved = false;

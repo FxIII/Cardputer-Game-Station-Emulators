@@ -7,7 +7,7 @@
 static void on_data_recv(const uint8_t *mac_addr, const uint8_t *data, int len) {
     if (!mac_addr || !data || len <= 0) return;
 
-    // Registra al volo il peer se non presente per poter rispondere in unicast
+    // Dynamically register peer if missing to allow unicast reply
     if (!esp_now_is_peer_exist(mac_addr)) {
         esp_now_peer_info_t peerInfo = {};
         memcpy(peerInfo.peer_addr, mac_addr, 6);
@@ -16,7 +16,7 @@ static void on_data_recv(const uint8_t *mac_addr, const uint8_t *data, int len) 
         esp_now_add_peer(&peerInfo);
     }
 
-    // Echo immediato del payload identico al mittente, zero serial log
+    // Immediate echo of identical payload to sender, zero serial overhead
     esp_now_send(mac_addr, data, len);
 }
 
@@ -34,7 +34,7 @@ extern "C" bool espnow_transport_init(void) {
         return false;
     }
 
-    // Registra peer broadcast di default
+    // Register broadcast peer by default
     uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     esp_now_peer_info_t bcast_peer = {};
     memcpy(bcast_peer.peer_addr, broadcast_mac, 6);
@@ -42,7 +42,7 @@ extern "C" bool espnow_transport_init(void) {
     bcast_peer.encrypt = false;
     esp_now_add_peer(&bcast_peer);
 
-    // Registra la callback di ricezione
+    // Register receive callback
     esp_now_register_recv_cb(on_data_recv);
 
     return true;

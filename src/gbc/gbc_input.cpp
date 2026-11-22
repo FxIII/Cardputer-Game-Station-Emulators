@@ -5,6 +5,7 @@
 
 extern "C" {
   #include "gnuboy/gnuboy.h"
+  #include "gnuboy/driver_espnow.h"
 #include "share/emu_log_cpp.h"
 }
 
@@ -31,6 +32,12 @@ extern "C" int gbc_input_poll(void)
         if (i2cPad & share::PAD_UP)    pad |= GB_PAD_UP;
         if (i2cPad & share::PAD_DOWN)  pad |= GB_PAD_DOWN;
         if (i2cPad & share::PAD_A)     pad |= GB_PAD_A;
+    }
+
+    // ================== LINK TELEMETRY ==================
+    if (M5Cardputer.Keyboard.isChange() &&
+        (M5Cardputer.Keyboard.isKeyPressed('t') || M5Cardputer.Keyboard.isKeyPressed('T'))) {
+        driver_espnow_dump_stats();
     }
 
     // ================== SCREEN MODE ==================
