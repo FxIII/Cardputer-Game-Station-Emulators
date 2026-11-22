@@ -13,7 +13,7 @@ struct GbLinkConfig {
 
 extern GbLinkConfig g_gb_link_config;
 
-// Mostra il menu Link prima di avviare il gioco Game Boy
+// Display Link menu before starting Game Boy game
 GbLinkConfig gb_link_show_menu(CardputerView& display, CardputerInput& input);
 
 #endif // GB_LINK_UI_H

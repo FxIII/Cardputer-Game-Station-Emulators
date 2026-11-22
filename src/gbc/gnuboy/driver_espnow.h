@@ -11,8 +11,11 @@ extern "C" {
 
 extern serial_driver_t driver_espnow;
 
-/* Configura il MAC del peer e abilita il driver */
+/* Configure peer MAC and enable driver */
 void driver_espnow_set_peer(const uint8_t *peer_mac);
+
+/* Print link latency and telemetry statistics to USB Serial */
+void driver_espnow_dump_stats(void);
 
 #ifdef __cplusplus
 }

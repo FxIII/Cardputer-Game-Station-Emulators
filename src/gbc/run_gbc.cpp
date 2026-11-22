@@ -72,7 +72,7 @@ bool isGbcGame(const char* filename) {
 }
 
 void run_gbc(const uint8_t* romData, size_t romLen, const char* romPathOrName) {
-    // Menu Link Cable prima di avviare il gioco
+    // Game Boy Link Cable menu before starting the game
     CardputerInput linkInput;
     CardputerView linkDisplay;
     linkDisplay.initialize();
@@ -109,7 +109,7 @@ void run_gbc(const uint8_t* romData, size_t romLen, const char* romPathOrName) {
     gbc_save_init(romPathOrName);
     gbc_save_load();
 
-    // Link Cable Serial Driver Setup (DOPO gnuboy_init e gnuboy_reset)
+    // Link Cable Serial Driver Setup (AFTER gnuboy_init and gnuboy_reset)
     if (linkCfg.enabled) {
         EMU_LOG("[GBC] Link Cable ENABLED -> Peer: %02X:%02X:%02X:%02X:%02X:%02X\n",
                 linkCfg.peer_mac[0], linkCfg.peer_mac[1], linkCfg.peer_mac[2],
